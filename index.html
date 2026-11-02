@@ -1408,6 +1408,7 @@ import os from 'https://gk.demo/demo/node/os.js';
 import crypto from 'https://gk.demo/demo/node/crypto.js';
 import path from 'https://gk.demo/demo/node/path.js';
 import { fileURLToPath } from 'https://gk.demo/demo/node/url.js';
+import { execFile } from 'https://gk.demo/demo/node/child_process.js';
 import {
   db, DATA_DIR, UPLOAD_DIR, newId, now, getSetting, setSetting, checkPw, publicUser, getUser, getUserByName, listUsers,
   createUser, updateUser, createSession, sessionUser, deleteSession, listDocs, getDoc, createDoc, updateDoc, deleteDoc,
@@ -2673,6 +2674,25 @@ route('GET', '/api/admin/backups', (req, res, u) => {
   send(res, 200, { dir: BACKUP_DIR, list });
 });
 
+// 🔄 자동 업데이트 (server-setup/update.ps1, 작업 스케줄러 GokseonPortalUpdate): 지금 버전·기록 보기, 지금 확인하기
+const run = (cmd, args) => new Promise(resolve => execFile(cmd, args, { cwd: path.dirname(PUBLIC), timeout: 10000, windowsHide: true }, (err, out) => resolve(err ? null : String(out).trim())));
+route('GET', '/api/admin/update', async (req, res, u) => {
+  adminOnly(u);
+  const head = await run('git', ['log', '-1', '--format=%h|%s|%ci']);
+  const [hash, subject, date] = (head || '').split('|');
+  let log = [];
+  try { log = fs.readFileSync(path.join(DATA_DIR, 'update.log'), 'utf8').replace(/^﻿/, '').trim().split(/\r?\n/).slice(-15).reverse(); } catch { /* 아직 없음 */ }
+  send(res, 200, { version: head ? { hash, subject, date } : null, installed: !!head, log });
+});
+route('POST', '/api/admin/update', async (req, res, u) => {
+  adminOnly(u);
+  fs.writeFileSync(path.join(DATA_DIR, 'update.force'), String(Date.now()));
+  const r = await run('schtasks', ['/run', '/tn', 'GokseonPortalUpdate']);
+  if (r === null) { fs.rmSync(path.join(DATA_DIR, 'update.force'), { force: true }); throw new HttpError(400, '자동 업데이트가 아직 설치되지 않았습니다 (학교 서버 PC에서 「3_자동업데이트 설치」를 실행하세요)'); }
+  audit(u.id, 'update.run');
+  send(res, 200, { ok: true });
+});
+
 // ───────────────────────── 서버 ─────────────────────────
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
@@ -2721,6 +2741,8 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
+  // 자동 업데이트(server-setup/update.ps1)가 이 포털만 골라 다시 켤 수 있게 프로세스 번호를 남김
+  try { fs.writeFileSync(path.join(DATA_DIR, 'server.pid'), String(process.pid)); } catch { /* 무시 */ }
   const ips = Object.values(os.networkInterfaces()).flat().filter(i => i && i.family === 'IPv4' && !i.internal).map(i => i.address);
   console.log(`\n  🏫 ${config().school.name} 교무 통합 플랫폼 실행 중`);
   console.log(`  ▸ 이 PC:      http://localhost:${PORT}`);
@@ -5136,7 +5158,8 @@ function setCookie(v) {
   for (const c of [].concat(v || [])) {
     const m = /^sid=([^;]*)/.exec(c); if (!m) continue;
     jar.sid = !m[1] || /Max-Age=0\b/i.test(c) ? null : m[1];
-    globalThis.__gkDirty?.();
+    // 로그인·로그아웃은 바로 저장 (곧바로 새로고침해도 유지되게)
+    if (ready) queueMicrotask(() => { saveNow(); });
   }
 }
 function run(method, url, headers, body) {
@@ -7305,12 +7328,18 @@ async function data(el) {
   render(el, html`<div class="grid g2">
     <section class="card card-pad stack"><h3>💾 데이터베이스 백업</h3><p class="muted small" style="margin:0">모든 게시물·일정·서명·설정이 담긴 DB 파일을 내려받습니다. 업로드 파일은 서버의 <span class="kbd">data/uploads</span> 폴더를 함께 복사해 보관하세요. 주 1회 이상 백업을 권장합니다.</p>
       <a class="btn primary" href="/api/admin/backup">⬇ DB 백업 내려받기</a><div class="small" id="autoBk"></div></section>
+    <section class="card card-pad stack"><h3>🔄 프로그램 자동 업데이트</h3><p class="muted small" style="margin:0">집에서 고쳐 GitHub에 올린 새 버전을 학교 서버가 10분마다 확인해 자동으로 반영합니다. 바꾸기 전에 DB를 백업하고, 새 버전이 켜지지 않으면 이전 버전으로 되돌립니다. 자료(data 폴더)는 건드리지 않습니다.</p>
+      <div class="small" id="upd">확인 중…</div><button class="btn" id="updNow">⟳ 지금 업데이트 확인</button></section>
     <section class="card card-pad stack"><h3>🕘 컴시간 즉시 동기화</h3><p class="muted small" style="margin:0">컴시간에서 시간표를 수정한 직후 바로 반영하려면 누르세요. 변경된 칸은 해당 선생님께 알림이 갑니다.</p>
       <button class="btn" id="sync">⟳ 지금 동기화</button></section>
     <section class="card card-pad stack"><h3>📅 NEIS 학사일정 가져오기</h3><p class="muted small" style="margin:0">학사일정 화면의 [NEIS 가져오기] 버튼으로 기간을 지정해 가져올 수 있습니다.</p><a class="btn" href="#/calendar">학사일정으로 이동</a></section>
     <section class="card card-pad stack"><h3>🧹 예시 데이터 삭제</h3><p class="muted small" style="margin:0">처음 설치 시 들어 있는 예시 학생(1학년 1반), 예시 교사 계정(demo1, demo2), 예시 규정·업무절차를 삭제합니다. 실제 사용 전에 실행하세요.</p>
       <button class="btn danger" id="demo">예시 데이터 삭제</button></section></div>`);
   get('/api/admin/backups').then(r => render($('#autoBk'), html`<b>🔄 자동 백업</b> — 매일 1번 서버의 <span class="kbd">${r.dir}</span> 에 저장 (최근 14일)<br>${r.list.length ? r.list.slice(0, 5).map(x => `${x.name} (${Math.round(x.size / 1024)}KB)`).join(' · ') : '아직 없음 (서버 시작 10초 뒤 첫 백업)'}`)).catch(() => {});
+  const upd = () => get('/api/admin/update').then(r => render($('#upd'), html`${r.version ? html`<b>지금 버전</b> <span class="kbd">${r.version.hash}</span> ${r.version.subject} <span class="faint">(${r.version.date.slice(0, 16)})</span>` : html`<span class="faint">자동 업데이트가 아직 설치되지 않았습니다 — 학교 서버 PC에서 「3_자동업데이트 설치」를 실행하세요</span>`}
+    ${r.log.length ? html`<div class="faint" style="margin-top:6px;white-space:pre-wrap;max-height:9em;overflow:auto">${r.log.join('\n')}</div>` : ''}`)).catch(() => {});
+  upd();
+  $('#updNow').onclick = async e => { e.target.disabled = true; try { await post('/api/admin/update'); ok('업데이트를 확인합니다. 새 버전이 있으면 1분 안에 포털이 다시 켜집니다.'); setTimeout(upd, 20000); } catch (err) { fail(err); } e.target.disabled = false; };
   $('#sync').onclick = async e => { e.target.disabled = true; try { const r = await post('/api/timetable/sync'); ok(`동기화 완료 (변경 ${r.changes}건)`); } catch (err) { fail(err); } e.target.disabled = false; };
   $('#demo').onclick = async () => {
     if (!await confirmDlg('예시 학생·예시 계정·예시 규정/업무절차를 삭제합니다. 계속할까요?', { danger: true, okText: '삭제' })) return;
@@ -11058,7 +11087,7 @@ export async function openWhiteboard({ url = null, mime = '', name = '빈 칠판
 <script>
 // 체험판 모듈 주소표(import map) — 각 코드 조각을 브라우저 안 파일(blob)로 연결
 (() => {
-  globalThis.__gkDemoVersion = "202610150308";
+  globalThis.__gkDemoVersion = "202611020535";
   globalThis.__gkWasm = () => { const s = atob(document.getElementById('gk-wasm').textContent.trim()); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; };
   const V = "https://gk.demo/", map = {};
   const blob = t => URL.createObjectURL(new Blob([t], { type: 'text/javascript' }));
