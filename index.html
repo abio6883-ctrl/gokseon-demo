@@ -329,6 +329,25 @@ table.tt td.off { background: repeating-linear-gradient(45deg, var(--surface-2),
 .seat.drag-over { box-shadow: 0 0 0 3px var(--primary); transform: scale(1.04); }
 .seat.pinned::after { content: "📌"; position: absolute; top: -8px; right: -6px; font-size: 13px; }
 .seat.pair-gap { margin-right: 18px; }
+/* 자리 배치 연출 */
+.seat.rolling { animation: seatShake .14s ease-in-out infinite alternate; }
+@keyframes seatShake { from { transform: translateY(-2px) rotate(-1.5deg); } to { transform: translateY(2px) rotate(1.5deg); } }
+.seat.reveal { animation: seatIn .5s cubic-bezier(.2, .9, .3, 1.35) both; }
+@keyframes seatIn { 0% { opacity: 0; transform: scale(.3) rotateY(90deg); } 70% { opacity: 1; transform: scale(1.1) rotateY(0); } 100% { opacity: 1; transform: none; } }
+.present-exit, .present-gen { display: none; }
+/* 📺 학생에게 보여주기: 조건 패널·고정 표시를 숨기고 자리표만 크게 */
+.seat-present .page-head, .seat-present #panel, .seat-present #tools, .seat-present .no-print, .seat-present #hist { display: none !important; }
+.seat-present #sg { grid-template-columns: 1fr !important; }
+.seat-present { position: fixed; inset: 0; z-index: 300; background: var(--bg); overflow: auto; padding: 28px max(16px, env(safe-area-inset-right, 0px)) 90px max(16px, env(safe-area-inset-left, 0px)); }
+.seat-present #ttl { font-size: 34px; }
+.seat-present .seat { width: 132px; height: 84px; font-size: 22px; }
+.seat-present .seat small { font-size: 14px; }
+.seat-present .seat.pinned::after { display: none; }
+.seat-present .seat.blocked { background: var(--surface-2); border-style: dashed; color: transparent; }
+.seat-present .board-bar { font-size: 20px; padding: 12px; }
+.seat-present .present-exit { display: inline-flex; position: fixed; top: max(14px, env(safe-area-inset-top, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); z-index: 301; }
+.seat-present .present-gen { display: inline-flex; position: fixed; bottom: max(18px, env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); z-index: 301; }
+@media (prefers-reduced-motion: reduce) { .seat.rolling { animation: none; } }
 
 /* ── 판서 ── */
 .wb { position: fixed; inset: 0; z-index: 150; background: #1e293b; display: flex; flex-direction: column; }
@@ -1695,14 +1714,71 @@ route('GET', '/api/staff', (req, res) => {
   const f = like => db.prepare('SELECT id, name, size, mime FROM files WHERE name LIKE ? AND deleted_at IS NULL ORDER BY created_at DESC').get(like) || null;
   send(res, 200, { staff: getSetting('staff', []), seat: f('%좌석_배치도%.pdf') || f('%좌석_배치도%'), classroom: f('%교실_배치도%'), emergency: f('%비상연락망%') });
 });
+// 관리자 › 교직원 명부: 행마다 orig(원래 이름)를 보내면 자리·시간표 등 나머지 정보는 그대로 두고,
+// 이름·내선이 바뀌면 자리배치도와 학급 담임 이름도 함께 바꾼다. 명부에서 빠진 사람의 자리는 빈자리로.
 route('PUT', '/api/staff', async (req, res, u) => {
   adminOnly(u);
   const { staff } = await readJson(req);
   if (!Array.isArray(staff)) throw new HttpError(400, '명부 형식이 올바르지 않습니다');
-  setSetting('staff', staff.map((s, i) => ({ no: i + 1, cat: String(s.cat || ''), name: String(s.name || '').trim(), title: String(s.title || ''), place: String(s.place || ''), ext: String(s.ext || ''), phone: String(s.phone || ''), away: !!s.away })).filter(s => s.name));
-  push({ type: 'data', col: 'staff' });
-  send(res, 200, { ok: true });
+  const old = getSetting('staff', []) || [];
+  const T = v => String(v ?? '').trim();
+  const rows = staff.map(s => ({ ...s, name: T(s.name), orig: T(s.orig) })).filter(s => s.name);
+  const dupe = rows.map(s => s.name).filter((n, i, a) => a.indexOf(n) !== i);
+  if (dupe.length) throw new HttpError(400, `같은 이름이 두 번 있습니다: ${[...new Set(dupe)].join(', ')} (구분하려면 이름 뒤에 A·B 등을 붙이세요)`);
+  const renames = [], extOf = {};
+  const next = rows.map((s, i) => {
+    const base = old.find(o => o.name === s.orig) || {};
+    if (s.orig && s.orig !== s.name) renames.push([s.orig, s.name]);
+    const ext = T(s.ext);
+    if (base.name && base.ext !== ext) extOf[s.name] = ext;
+    const seats = (Array.isArray(base.seats) ? base.seats : []).map(x => (x.ext === base.ext ? { ...x, ext } : x));
+    return { ...base, no: i + 1, cat: T(s.cat), name: s.name, title: T(s.title), dept: T(s.dept), subject: T(s.subject), place: T(s.place), ext, phone: T(s.phone), tt: T(s.tt), seats, away: !!s.away };
+  });
+  const keep = new Set(rows.map(s => s.orig).filter(Boolean));
+  const removed = old.map(o => o.name).filter(n => n && !keep.has(n));
+  syncNames(renames, removed, extOf);
+  // 이번에 바뀐 줄만: 같은 이름의 로그인 계정도 이름·휴대폰·부서·과목을 맞춘다
+  let accounts = 0;
+  for (const s of next) {
+    const row = rows.find(r => r.name === s.name), was = row?.orig || s.name;
+    const prev = old.find(o => o.name === was);
+    if (!prev || ['name', 'phone', 'dept', 'subject'].every(k => T(prev[k]) === T(s[k]))) continue;
+    const acc = listUsers().find(a => a.name === was && a.role !== 'guest');
+    if (!acc) continue;
+    const patch = {};
+    if (acc.name !== s.name) patch.name = s.name;
+    if (s.phone && acc.phone !== s.phone) patch.phone = s.phone;
+    if (s.dept && acc.dept !== s.dept) patch.dept = s.dept;
+    if (s.subject && acc.subject !== s.subject) patch.subject = s.subject;
+    if (Object.keys(patch).length) { updateUser(acc.id, patch); accounts++; }
+  }
+  setSetting('staff', next);
+  audit(u.id, 'staff', `${next.length}명` + (renames.length ? ` · 이름 변경 ${renames.map(r => r.join('→')).join(', ')}` : '') + (removed.length ? ` · 빠짐 ${removed.join(', ')}` : '') + (accounts ? ` · 계정 ${accounts}명 맞춤` : ''));
+  dataChanged('classes'); dataChanged('users'); push({ type: 'data', col: 'staff' });
+  send(res, 200, { ok: true, count: next.length, renamed: renames.length, removed: removed.length, accounts });
 });
+
+// 이름이 바뀌거나 빠진 교직원을 자리배치도·학급 담임에 반영 (교직원 명부·사용자 계정 수정 양쪽에서 사용)
+function syncNames(renames, removed = [], extOf = {}) {
+  const map = getSetting('seatMap', null);
+  if (map?.floors) {
+    for (const f of map.floors) for (const r of f.rooms || []) for (const seat of r.seats || []) {
+      const rn = renames.find(([a]) => a === seat.name);
+      if (rn) seat.name = rn[1];
+      if (removed.includes(seat.name)) seat.name = '';
+      if (seat.name && extOf[seat.name] !== undefined) seat.ext = extOf[seat.name];
+    }
+    setSetting('seatMap', map);
+  }
+  for (const c of listDocs('classes')) {
+    let ch = false; const d = { ...c };
+    for (const k of ['homeroomName', 'subHomeroomName']) {
+      const rn = renames.find(([a]) => a === d[k]);
+      if (rn) { d[k] = rn[1]; ch = true; } else if (d[k] && removed.includes(d[k])) { d[k] = ''; ch = true; }
+    }
+    if (ch) updateDoc('classes', c.id, d);
+  }
+}
 
 route('GET', '/api/me', (req, res, u) => {
   try { if (u.role !== 'guest') recordVisit(u); } catch { /* 방문 기록 실패는 무시 */ }
@@ -1780,7 +1856,19 @@ route('PUT', '/api/users/:id', async (req, res, u, p) => {
   if ('active' in patch) patch.status = patch.active ? 'active' : 'suspended';
   if (b.resetPassword) { patch.password = b.resetPassword; patch.must_change = 1; }
   if (p.id === u.id && (patch.role === 'teacher' || patch.active === false)) throw new HttpError(400, '자기 자신의 관리자 권한/계정은 해제할 수 없습니다');
+  const before = getUser(p.id);
   const r = updateUser(p.id, patch);
+  // 계정의 이름·휴대폰·부서·과목을 바꾸면 교직원 명부(연락처·자리표)·자리배치도·담임 이름도 함께
+  if (before && ['name', 'phone', 'dept', 'subject'].some(k => k in patch && patch[k] !== before[k])) {
+    const staff = getSetting('staff', []) || [];
+    const row = staff.find(s => s.name === before.name);
+    if (row) {
+      if ('name' in patch && patch.name) row.name = String(patch.name).trim();
+      for (const k of ['phone', 'dept', 'subject']) if (k in patch && patch[k]) row[k] = String(patch[k]).trim();
+      setSetting('staff', staff); push({ type: 'data', col: 'staff' });
+    }
+    if ('name' in patch && patch.name && patch.name !== before.name) { syncNames([[before.name, String(patch.name).trim()]]); dataChanged('classes'); }
+  }
   if (patch.active === false) db.prepare('DELETE FROM sessions WHERE user_id=?').run(p.id);
   audit(u.id, 'user.update', `${r.username} ${Object.keys(patch).join(',')}`);
   dataChanged('users');
@@ -7171,10 +7259,70 @@ export function openMemoPanel() {
 export default async function admin(view, ctx) {
   const tab = ctx.params[0] || 'users';
   render(view, html`<div class="page-head"><div><h1>⚙️ 관리자</h1><p>계정·학교 설정·연동·데이터 백업을 관리합니다.</p></div></div>
-    <div class="tabs"><a href="#/admin/users" class="${tab === 'users' ? 'active' : ''}">👥 사용자</a><a href="#/admin/homerooms" class="${tab === 'homerooms' ? 'active' : ''}">🧑‍🏫 담임 지정</a><a href="#/admin/settings" class="${tab === 'settings' ? 'active' : ''}">🏫 학교 설정·연동</a>
+    <div class="tabs"><a href="#/admin/users" class="${tab === 'users' ? 'active' : ''}">👥 사용자</a><a href="#/admin/staff" class="${tab === 'staff' ? 'active' : ''}">📇 교직원 명부</a><a href="#/admin/homerooms" class="${tab === 'homerooms' ? 'active' : ''}">🧑‍🏫 담임 지정</a><a href="#/admin/settings" class="${tab === 'settings' ? 'active' : ''}">🏫 학교 설정·연동</a>
       <a href="#/admin/lite" class="${tab === 'lite' ? 'active' : ''}">📱 모바일 간편판</a><a href="#/admin/data" class="${tab === 'data' ? 'active' : ''}">💾 데이터·백업</a><a href="#/admin/audit" class="${tab === 'audit' ? 'active' : ''}">📜 활동 기록</a></div><div id="body"></div>`);
   const body = $('#body');
-  await ({ users, homerooms, settings, data, audit, lite: liteTab }[tab] || users)(body, ctx);
+  await ({ users, staff: staffTab, homerooms, settings, data, audit, lite: liteTab }[tab] || users)(body, ctx);
+}
+
+// 📇 교직원 명부: 연락처·자리표·사람 카드에 쓰이는 명단 (로그인 계정과는 별도)
+const STAFF_COLS = [['cat', '구분', 90], ['name', '이름', 100], ['title', '직위·담당', 130], ['dept', '부서', 130], ['subject', '과목', 80], ['ext', '내선', 70], ['phone', '휴대폰', 140], ['place', '자리', 200], ['tt', '컴시간 이름', 90]];
+async function staffTab(el) {
+  const { staff } = await get('/api/staff');
+  let rows = staff.map(s => ({ ...s, orig: s.name }));
+  let q = '', dirty = false;
+  render(el, html`<section class="card">
+    <div class="card-head"><h3>📇 교직원 명부</h3><span class="small faint">여기서 한 번 고치면 <b>연락처·자리표 · 사람 카드 · 자리배치도 · 학급 담임 · 로그인 계정</b>의 이름·휴대폰이 모두 함께 바뀝니다.</span></div>
+    <div class="card-pad row" style="gap:8px;flex-wrap:wrap"><input type="search" id="sq" placeholder="이름·부서로 찾기" style="max-width:220px">
+      <button class="btn" id="sAdd">＋ 선생님 추가</button><button class="btn" id="sPaste">📋 엑셀에서 붙여넣기</button>
+      <span class="spacer"></span><span class="small" id="sDirty"></span><button class="btn primary" id="sSave">💾 저장</button></div>
+    <div class="table-wrap"><table class="t staff-edit"><thead><tr><th>#</th>${STAFF_COLS.map(([, l]) => html`<th>${l}</th>`)}<th>휴직</th><th></th></tr></thead><tbody id="sBody"></tbody></table></div>
+    <div class="card-pad small faint">· <b>선생님이 바뀌었으면</b> 떠난 선생님 줄의 이름·휴대폰을 새 선생님으로 고치세요 → 자리·내선·담임 학급을 그대로 이어받습니다.<br>· 전출한 선생님은 🗑로 빼면 자리배치도에서 빈자리가 됩니다. 잠시 쉬는 선생님은 「휴직」만 체크하세요.<br>· 로그인 계정(이름·담임)은 [👥 사용자]에서, 담임은 [🧑‍🏫 담임 지정]에서 따로 바꿉니다.</div></section>
+    <datalist id="dlCat">${['교장', '교감', '교사', '행정실장', '주무관', '전문상담', '사서', '공무직', '강사', '당직', '학교안전지킴이', '휴직·휴가'].map(c => html`<option value="${c}">`)}</datalist>
+    <datalist id="dlDept">${(state.config.depts || []).map(d => html`<option value="${d}">`)}</datalist>`);
+  const mark = on => { dirty = on; $('#sDirty').textContent = on ? '● 저장하지 않은 변경이 있어요' : ''; $('#sDirty').style.color = 'var(--danger, #dc2626)'; };
+  const draw = () => {
+    const show = rows.map((r, i) => [r, i]).filter(([r]) => !q || [r.name, r.dept, r.title, r.subject].join(' ').includes(q));
+    render($('#sBody'), html`${show.map(([r, i]) => html`<tr data-i="${i}" class="${r.orig ? '' : 'new-row'}"><td class="faint small">${i + 1}</td>
+      ${STAFF_COLS.map(([k, , w]) => html`<td><input data-k="${k}" value="${r[k] || ''}" style="width:${w}px" ${k === 'cat' ? raw('list="dlCat"') : k === 'dept' ? raw('list="dlDept"') : ''} ${k === 'name' ? raw('required') : ''}></td>`)}
+      <td style="text-align:center"><input type="checkbox" data-k="away" ${r.away ? raw('checked') : ''}></td>
+      <td><button class="btn sm ghost" data-del="${i}" title="명부에서 빼기">🗑</button></td></tr>`)}`);
+  };
+  draw();
+  on(el, 'input', '[data-k]', (e, inp) => { const r = rows[+inp.closest('tr').dataset.i]; r[inp.dataset.k] = inp.type === 'checkbox' ? inp.checked : inp.value; mark(true); });
+  on(el, 'change', 'input[type=checkbox][data-k]', (e, inp) => { rows[+inp.closest('tr').dataset.i].away = inp.checked; mark(true); });
+  on(el, 'click', '[data-del]', async (e, b) => {
+    const r = rows[+b.dataset.del];
+    if (!await confirmDlg(`${r.name || '이 행'}을(를) 명부에서 뺄까요? 자리배치도에서는 빈자리가 됩니다. (저장해야 적용)`, { danger: true, okText: '빼기' })) return;
+    rows.splice(+b.dataset.del, 1); mark(true); draw();
+  });
+  $('#sq').oninput = e => { q = e.target.value.trim(); draw(); };
+  $('#sAdd').onclick = () => { rows.push({ cat: '교사', name: '', orig: '' }); q = ''; $('#sq').value = ''; draw(); mark(true); const last = $$('#sBody tr').pop(); last?.scrollIntoView({ block: 'center' }); $('[data-k=name]', last)?.focus(); };
+  // 엑셀에서 복사한 표 붙여넣기: 구분·이름·직위·부서·과목·내선·휴대폰·자리 순. 같은 이름은 고치고, 새 이름은 추가
+  $('#sPaste').onclick = () => formModal({ title: '📋 엑셀에서 붙여넣기', size: 'wide',
+    fields: html`<p class="small muted full" style="margin:0">엑셀에서 아래 순서의 열을 복사해 붙여 넣으세요 (첫 줄이 제목이면 자동으로 건너뜀).<br><b>구분 · 이름 · 직위·담당 · 부서 · 과목 · 내선 · 휴대폰 · 자리</b><br>이미 있는 이름은 내용을 고치고, 없는 이름은 새로 추가합니다.</p>
+      <label class="f full"><textarea name="t" rows="10" placeholder="교사	홍길동	1-1	1학년부	국어	361	010-1234-5678	3층 1학년 교무실"></textarea></label>`,
+    submitText: '명부에 반영',
+    onSubmit(d) {
+      const keys = ['cat', 'name', 'title', 'dept', 'subject', 'ext', 'phone', 'place'];
+      let add = 0, upd = 0;
+      for (const line of String(d.t || '').split(/\r?\n/)) {
+        const c = line.split('\t').map(x => x.trim()); if (c.length < 2 || !c[1] || c[1] === '이름' || c[1] === '성명') continue;
+        const o = Object.fromEntries(keys.map((k, i) => [k, c[i] || '']));
+        const hit = rows.find(r => r.name === o.name);
+        if (hit) { for (const k of keys) if (o[k]) hit[k] = o[k]; upd++; } else { rows.push({ ...o, orig: '' }); add++; }
+      }
+      draw(); mark(true); ok(`추가 ${add}명 · 수정 ${upd}명 — [💾 저장]을 눌러야 적용됩니다`);
+    } });
+  $('#sSave').onclick = async () => {
+    const empty = rows.filter(r => !String(r.name || '').trim());
+    if (empty.length && !await confirmDlg(`이름이 비어 있는 행 ${empty.length}개는 빼고 저장할까요?`)) return;
+    try {
+      const r = await put('/api/staff', { staff: rows.filter(r => String(r.name || '').trim()) });
+      ok(`저장했습니다 (${r.count}명${r.renamed ? ` · 이름 변경 ${r.renamed}` : ''}${r.removed ? ` · 빠짐 ${r.removed}` : ''}${r.accounts ? ` · 로그인 계정 ${r.accounts}명도 맞춤` : ''})`); loadUsers();
+      rows = (await get('/api/staff')).staff.map(s => ({ ...s, orig: s.name })); draw(); mark(false);
+    } catch (err) { fail(err); }
+  };
 }
 
 const STATUS = { active: ['사용 중', 'green'], pending: ['승인 대기', 'amber'], suspended: ['사용 중지', 'red'], withdrawn: ['탈퇴', ''] };
@@ -9593,10 +9741,31 @@ function formTab(el) {
   open();
 }
 </script>
-<script type="text/gk-module" data-path="js/pages/seating.js">import { state, col, html, raw, render, $, $$, on, ago, formModal, confirmDlg, ok, fail, emptyState, dateTime } from 'https://gk.demo/js/core.js';
+<script type="text/gk-module" data-path="js/pages/seating.js">import { state, col, put, html, raw, render, $, $$, on, ago, formModal, confirmDlg, ok, fail, emptyState, dateTime } from 'https://gk.demo/js/core.js';
 import { loadStudents, classKey, classesOf, enrolled, outOfClass } from 'https://gk.demo/js/students.js';
 
 const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+// 🔊 자리 배치 효과음 (소리 파일 없이 브라우저에서 만듦). 끄기 설정은 이 브라우저에 기억
+const SFX = (() => {
+  let ac = null;
+  let muted = false; try { muted = localStorage.getItem('seatMute') === '1'; } catch { /* 무시 */ }
+  const ctx = () => { if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch { ac = null; } } if (ac?.state === 'suspended') ac.resume(); return ac; };
+  const tone = (freq, dur, { type = 'sine', vol = 0.12, at = 0, slide = 0 } = {}) => {
+    const a = ctx(); if (!a || muted) return;
+    const t = a.currentTime + at, o = a.createOscillator(), g = a.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t); if (slide) o.frequency.exponentialRampToValueAtTime(freq * slide, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(a.destination); o.start(t); o.stop(t + dur + 0.02);
+  };
+  return {
+    get muted() { return muted; },
+    toggle() { muted = !muted; try { localStorage.setItem('seatMute', muted ? '1' : '0'); } catch { /* 무시 */ } return muted; },
+    tick() { tone(700 + Math.random() * 500, 0.04, { type: 'square', vol: 0.035 }); },          // 이름이 굴러갈 때
+    pop(k) { tone(420 + k * 18, 0.12, { type: 'triangle', vol: 0.09, slide: 1.5 }); },           // 자리가 하나씩 정해질 때
+    done() { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.32, { type: 'triangle', vol: 0.11, at: i * 0.09 })); }, // 완성!
+  };
+})();
 
 export default async function seating(view, ctx) {
   const all = await loadStudents();
@@ -9615,7 +9784,11 @@ export default async function seating(view, ctx) {
       <section class="card card-pad"><div class="row no-print" style="margin-bottom:12px">
         <div class="seg" id="tools"><button data-tool="swap">🔀 자리 바꾸기</button><button data-tool="pin">📌 고정</button><button data-tool="block">⛔ 빈자리</button></div>
         <span class="spacer"></span><label class="check small"><input type="checkbox" id="tv"> 교사 시점</label>
+        <button class="btn" id="mute" title="자리 배치 효과음 켜기/끄기">${SFX.muted ? '🔇' : '🔊'}</button>
+        <button class="btn" id="present" title="조건·고정 표시를 숨기고 자리표만 크게 보여 줍니다">📺 학생에게 보여주기</button>
         <button class="btn" id="save">💾 저장</button><button class="btn" onclick="window.print()">🖨 인쇄</button></div>
+        <button class="btn present-exit" id="presentExit">✕ 나가기 (Esc)</button>
+        <button class="btn primary lg present-gen" id="presentGen">🎲 다시 배치</button>
         <h2 class="center" id="ttl" style="margin-bottom:12px"></h2>
         <div class="seat-wrap" id="room"></div>
         <div class="small faint center no-print" style="margin-top:10px">자리를 끌어다 놓거나, 두 자리를 차례로 눌러 서로 바꿀 수 있습니다.</div></section></div>
@@ -9687,7 +9860,26 @@ export default async function seating(view, ctx) {
   }
   const toast_ = t => fail(t);
 
+  // 앞자리·떨어뜨리기 조건은 학급별로 이 선생님 계정에만 기억 (학생에게 보이지 않게 개수도 표시하지 않음)
+  let condT = null;
+  function saveCond() {
+    clearTimeout(condT);
+    condT = setTimeout(() => {
+      const all = { ...(state.prefs?.seatCond || {}), [cls]: { front: [...st.front], apart: st.apart, frontRows: st.frontRows } };
+      state.prefs = { ...(state.prefs || {}), seatCond: all };
+      put('/api/me/prefs', { prefs: { seatCond: all } }).catch(() => { /* 다음에 다시 저장 */ });
+    }, 600);
+  }
+  function loadCond() {
+    const c = state.prefs?.seatCond?.[cls] || {}, ids = new Set(students.map(s => s.id));
+    st.front = new Set((c.front || []).filter(id => ids.has(id)));
+    st.apart = (c.apart || []).filter(([a, b]) => ids.has(a) && ids.has(b));
+    st.frontRows = c.frontRows || 2;
+  }
+  const isOpen = id => !!$('#' + id)?.open;
+
   function drawPanel() {
+    const openFront = isOpen('dFront'), openApart = isOpen('dApart');
     render($('#panel'), html`
       <div class="form-grid" style="grid-template-columns:1fr 1fr"><label class="f">줄(행)<input type="number" min="1" max="10" id="rows" value="${st.rows}"></label><label class="f">칸(열)<input type="number" min="1" max="12" id="cols" value="${st.cols}"></label></div>
       <label class="check sp-ex"><input type="checkbox" id="exSp" ${st.exclude ? raw('checked') : ''}> 복합특수·순회 학생 자리에서 제외 <span class="badge">${outList.length}명</span></label>
@@ -9696,10 +9888,11 @@ export default async function seating(view, ctx) {
       <label class="f">배치 방식<select id="mode"><option value="random" ${st.mode === 'random' ? raw('selected') : ''}>무작위 (조건 반영)</option><option value="number" ${st.mode === 'number' ? raw('selected') : ''}>번호순</option></select></label>
       <label class="check"><input type="checkbox" id="mixed" ${st.mixed ? raw('checked') : ''}> 남녀 짝 섞기</label>
       <label class="check"><input type="checkbox" id="avoid" ${st.avoidPrev ? raw('checked') : ''}> 직전 자리표의 짝 피하기</label>
-      <details ${st.front.size ? raw('open') : ''}><summary><b>앞자리 배정</b> <span class="badge">${st.front.size}</span></summary>
+      <div class="small faint" style="margin-bottom:-4px">🙈 아래 조건은 접어 두면 학생에게 보이지 않아요 (학급별로 기억됨)</div>
+      <details id="dFront" ${openFront ? raw('open') : ''}><summary><b>앞자리 배정</b></summary>
         <div class="small faint" style="margin:6px 0">시력·학습 지원 등으로 앞 <input type="number" id="fr" min="1" max="5" value="${st.frontRows}" style="width:50px;padding:2px 6px"> 줄 안에 앉힐 학생</div>
         <div class="chips">${students.map(s => html`<label class="chip" style="cursor:pointer;${st.front.has(s.id) ? 'background:var(--primary-soft);border-color:var(--primary)' : ''}"><input type="checkbox" hidden data-front="${s.id}" ${st.front.has(s.id) ? raw('checked') : ''}>${s.num}.${s.name}</label>`)}</div></details>
-      <details ${st.apart.length ? raw('open') : ''}><summary><b>떨어뜨리기</b> <span class="badge">${st.apart.length}</span></summary>
+      <details id="dApart" ${openApart ? raw('open') : ''}><summary><b>떨어뜨리기</b></summary>
         <div class="row" style="margin:6px 0"><select id="ap1">${students.map(s => html`<option value="${s.id}">${s.num}.${s.name}</option>`)}</select><select id="ap2">${students.map(s => html`<option value="${s.id}">${s.num}.${s.name}</option>`)}</select><button class="btn sm" id="apAdd">추가</button></div>
         <div class="chips">${st.apart.map(([a, b], i) => html`<span class="chip">${byId(a)?.name} ↔ ${byId(b)?.name}<button data-aprm="${i}">✕</button></span>`)}</div></details>
       <button class="btn primary lg" id="gen">🎲 자리 배치하기</button>
@@ -9746,7 +9939,7 @@ export default async function seating(view, ctx) {
     const last = history[0];
     if (last) Object.assign(st, { rows: last.rows, cols: last.cols, pair: last.pair, layout: [...last.layout], blocked: new Set(last.blocked || []), pinned: new Set(last.pinned || []), name: last.name });
     else { st.cols = 6; st.rows = Math.max(1, Math.ceil(students.length / st.cols)); st.layout = Array(N()).fill(null); st.blocked = new Set(); st.pinned = new Set(); st.name = ''; generateNumber(); }
-    st.front = new Set(); st.apart = [];
+    loadCond();
     drawPanel(); drawRoom(); drawHist();
   }
   function generateNumber() { const m = st.mode; st.mode = 'number'; generate(); st.mode = m; }
@@ -9772,21 +9965,58 @@ export default async function seating(view, ctx) {
     if (t.id === 'mode') st.mode = t.value;
     if (t.id === 'mixed') st.mixed = t.checked;
     if (t.id === 'avoid') st.avoidPrev = t.checked;
-    if (t.id === 'fr') st.frontRows = Number(t.value) || 2;
-    if (t.dataset.front) { t.checked ? st.front.add(t.dataset.front) : st.front.delete(t.dataset.front); drawPanel(); }
+    if (t.id === 'fr') { st.frontRows = Number(t.value) || 2; saveCond(); }
+    if (t.dataset.front) { t.checked ? st.front.add(t.dataset.front) : st.front.delete(t.dataset.front); drawPanel(); saveCond(); }
   });
   panel.addEventListener('click', e => {
-    if (e.target.id === 'apAdd') { const a = $('#ap1').value, b = $('#ap2').value; if (a !== b) { st.apart.push([a, b]); drawPanel(); } }
-    if (e.target.dataset.aprm) { st.apart.splice(Number(e.target.dataset.aprm), 1); drawPanel(); }
-    if (e.target.id === 'clearPins') { st.pinned.clear(); st.blocked.clear(); drawRoom(); }
-    if (e.target.id === 'gen') {
-      if (!generate()) return;
-      // 추첨 연출
-      const names = students.map(s => s.name); let n = 0;
-      const seats = $$('.seat:not(.blocked)', $('#room'));
-      const tick = setInterval(() => { seats.forEach(el => { if (!el.classList.contains('pinned')) el.firstChild.textContent = names[Math.floor(Math.random() * names.length)]; }); if (++n > 9) { clearInterval(tick); drawRoom(); ok('자리 배치 완료! 마음에 들면 저장하세요'); } }, 70);
+    if (e.target.id === 'apAdd') {
+      const a = $('#ap1').value, b = $('#ap2').value;
+      if (a === b) return fail('서로 다른 두 학생을 고르세요');
+      if (st.apart.some(([x, y]) => (x === a && y === b) || (x === b && y === a))) return fail('이미 추가한 두 학생입니다');
+      st.apart.push([a, b]); drawPanel(); saveCond();
     }
+    if (e.target.dataset.aprm) { st.apart.splice(Number(e.target.dataset.aprm), 1); drawPanel(); saveCond(); }
+    if (e.target.id === 'clearPins') { st.pinned.clear(); st.blocked.clear(); drawRoom(); }
+    if (e.target.id === 'gen') run();
   });
+
+  // 🎲 배치 연출: 이름이 굴러가다(틱 소리) → 자리가 한 칸씩 뒤집히며 정해지고(뿅) → 완성 화음
+  let busy = false;
+  function run() {
+    if (busy) return;
+    if (!generate()) return;
+    busy = true;
+    const names = students.map(s => s.name); let n = 0;
+    const seats = $$('.seat:not(.blocked)', $('#room'));
+    seats.forEach(el => el.classList.add('rolling'));
+    const roll = setInterval(() => {
+      seats.forEach(el => { if (!el.classList.contains('pinned') && el.firstChild) el.firstChild.textContent = names[Math.floor(Math.random() * names.length)]; });
+      SFX.tick();
+      if (++n > 16) {
+        clearInterval(roll);
+        drawRoom();
+        const shown = $$('.seat:not(.empty)', $('#room'));
+        const step = Math.max(25, Math.min(70, 1600 / Math.max(1, shown.length)));
+        shown.forEach((el, k) => { el.style.animationDelay = `${k * step}ms`; el.classList.add('reveal'); setTimeout(() => SFX.pop(k), k * step); });
+        setTimeout(() => { SFX.done(); busy = false; ok('자리 배치 완료! 마음에 들면 [💾 저장]을 누르세요'); }, shown.length * step + 350);
+      }
+    }, 75);
+  }
+
+  // 📺 학생에게 보여주기: 왼쪽 조건·고정 표시를 숨기고 자리표만 크게
+  const setPresent = on_ => {
+    view.classList.toggle('seat-present', on_);
+    if (on_) { try { document.documentElement.requestFullscreen?.().catch(() => {}); } catch { /* 무시 */ } }
+    else if (document.fullscreenElement) { try { document.exitFullscreen(); } catch { /* 무시 */ } }
+  };
+  $('#present').onclick = () => setPresent(true);
+  $('#presentExit').onclick = () => setPresent(false);
+  $('#presentGen').onclick = () => run();
+  ctx.on('keydown', e => { if (e.key === 'Escape' && view.classList.contains('seat-present')) setPresent(false); });
+  const onFs = () => { if (!document.fullscreenElement && view.classList.contains('seat-present')) view.classList.remove('seat-present'); };
+  document.addEventListener('fullscreenchange', onFs);
+  ctx.cleanup(() => { document.removeEventListener('fullscreenchange', onFs); view.classList.remove('seat-present'); });
+  $('#mute').onclick = e => { const m = SFX.toggle(); e.currentTarget.textContent = m ? '🔇' : '🔊'; if (!m) SFX.pop(4); };
   on(view, 'click', '[data-tool]', (e, b) => { st.tool = b.dataset.tool; selected = null; drawRoom(); });
   $('#tv').onchange = e => { st.teacherView = e.target.checked; drawRoom(); };
   const room = $('#room');
@@ -11087,7 +11317,7 @@ export async function openWhiteboard({ url = null, mime = '', name = '빈 칠판
 <script>
 // 체험판 모듈 주소표(import map) — 각 코드 조각을 브라우저 안 파일(blob)로 연결
 (() => {
-  globalThis.__gkDemoVersion = "202611020535";
+  globalThis.__gkDemoVersion = "202611050252";
   globalThis.__gkWasm = () => { const s = atob(document.getElementById('gk-wasm').textContent.trim()); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; };
   const V = "https://gk.demo/", map = {};
   const blob = t => URL.createObjectURL(new Blob([t], { type: 'text/javascript' }));
