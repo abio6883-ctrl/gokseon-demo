@@ -1081,6 +1081,52 @@ tr.st-gone td { opacity: .45; }
 .lite-url b { font-size: 16px; word-break: break-all; }
 .lite-pass { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); } .lite-pass b { font-size: 22px; letter-spacing: .08em; font-variant-numeric: tabular-nums; flex: 1; }
 .lite-sw { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); } .lite-sw .check { align-items: flex-start; }
+
+/* ── 📣 중요 공지 팝업 ── */
+.np-popup { padding: 12px 14px; border-radius: 12px; border: 1.5px dashed var(--border-strong); background: var(--surface-2); transition: background .2s, border-color .2s; }
+.np-popup .pop-row { display: none; }
+.np-popup.on { border-style: solid; border-color: #f59e0b; background: var(--warn-soft); }
+.np-popup.on .pop-row { display: flex; }
+.pop-check { font-size: 15px; }
+.badge.pop-badge { background: linear-gradient(135deg, #f59e0b, #ef4444); color: #fff; border: 0; }
+.npop { position: fixed; inset: 0; z-index: 400; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  background: rgba(9, 15, 30, .55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: npopFade .25s ease both; }
+.npop.out { animation: npopFade .2s ease reverse both; }
+.npop-card { position: relative; width: min(580px, 100%); min-width: 0; max-height: min(86vh, 760px); display: flex; flex-direction: column; overflow: hidden;
+  background: var(--surface); color: var(--text); border-radius: 22px; box-shadow: 0 30px 80px -20px rgba(0, 0, 0, .55), 0 0 0 1px var(--border); animation: npopIn .42s cubic-bezier(.2, .9, .3, 1.2) both; }
+.npop-card::before { content: ""; position: absolute; inset: 0 0 auto; height: 6px; background: linear-gradient(90deg, #1d4ed8, #7c3aed, #f59e0b); }
+.npop-card.imp::before { background: linear-gradient(90deg, #ef4444, #f59e0b, #ef4444); }
+.npop-top { display: flex; align-items: center; gap: 10px; padding: 20px 20px 0 24px; }
+.npop-tag { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px 6px 8px; border-radius: 999px; font-size: 14px; font-weight: 700; color: #92400e; background: #fef3c7; }
+.npop-tag i { font-style: normal; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: #fff; box-shadow: 0 2px 6px rgba(146, 64, 14, .25); animation: npopRing 2.4s ease-in-out infinite; transform-origin: 50% 20%; }
+.npop-card.imp .npop-tag { color: #991b1b; background: #fee2e2; }
+.npop-count { font-size: 13px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.npop-x { margin-left: auto; width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--surface-2); color: var(--text-2); font-size: 16px; cursor: pointer; }
+.npop-x:hover { background: var(--border); }
+.npop-main { padding: 14px 24px 6px; overflow: auto; min-height: 0; }
+.npop-main.slide-next { animation: npopNext .32s ease both; } .npop-main.slide-prev { animation: npopPrev .32s ease both; }
+.npop-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13px; color: var(--text-2); }
+.npop-dept { padding: 3px 10px; border-radius: 6px; background: var(--primary-soft); color: var(--primary); font-weight: 700; }
+.npop-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--text-3); }
+.npop-main h2 { margin: 12px 0 10px; font-size: 26px; line-height: 1.3; letter-spacing: -.01em; text-wrap: balance; word-break: keep-all; }
+.npop-text { font-size: 16px; line-height: 1.7; color: var(--text); word-break: keep-all; overflow-wrap: anywhere; }
+.npop-att { margin-top: 10px; font-size: 13px; color: var(--text-2); }
+.npop-dots { display: flex; justify-content: center; gap: 6px; padding: 8px 0 2px; }
+.npop-dots button { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 4px; background: var(--border-strong); cursor: pointer; transition: width .25s, background .25s; }
+.npop-dots button.on { width: 24px; background: var(--primary); }
+.npop-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 20px 18px 24px; margin-top: 8px; border-top: 1px solid var(--border); background: var(--surface-2); }
+.npop-snz { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-3); }
+.npop-snz button { border: 0; background: none; padding: 4px 2px; color: var(--text-2); font-size: 13px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--border-strong); }
+.npop-snz button:hover { color: var(--text); text-decoration-color: currentColor; }
+.npop-act { display: flex; gap: 8px; margin-left: auto; }
+.npop :focus-visible { outline: 3px solid var(--primary-2); outline-offset: 2px; }
+@keyframes npopFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes npopIn { from { opacity: 0; transform: translateY(24px) scale(.94); } to { opacity: 1; transform: none; } }
+@keyframes npopNext { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+@keyframes npopPrev { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+@keyframes npopRing { 0%, 70%, 100% { transform: rotate(0); } 75% { transform: rotate(-14deg); } 82% { transform: rotate(12deg); } 89% { transform: rotate(-8deg); } 95% { transform: rotate(4deg); } }
+@media (max-width: 520px) { .npop-main h2 { font-size: 21px; } .npop-foot { padding: 12px 16px 16px; } .npop-act { width: 100%; } .npop-act .btn { flex: 1; } .npop-snz { width: 100%; justify-content: center; } }
+@media (prefers-reduced-motion: reduce) { .npop, .npop-card, .npop-main, .npop-tag i { animation: none !important; } }
 </style>
 </head>
 <body>
@@ -1553,6 +1599,12 @@ const HOOKS = {
     before(d) {
       for (const k of ['startDate', 'endDate']) if (d[k] && !/^\d{4}-\d{2}-\d{2}$/.test(d[k])) throw new HttpError(400, '게시 기간 날짜 형식이 올바르지 않습니다');
       if (d.startDate && d.endDate && d.endDate < d.startDate) throw new HttpError(400, '게시 종료일이 시작일보다 빠릅니다');
+      // 📣 팝업 공지: 기간은 필수, 게시 기간 안에서만
+      if (d.popup) {
+        for (const k of ['popupStart', 'popupEnd']) if (!/^\d{4}-\d{2}-\d{2}$/.test(d[k] || '')) throw new HttpError(400, '팝업 기간(시작일·끝나는 날)을 정해 주세요');
+        if (d.popupEnd < d.popupStart) throw new HttpError(400, '팝업 끝나는 날이 시작일보다 빠릅니다');
+        if (d.endDate && d.popupEnd > d.endDate) throw new HttpError(400, '팝업은 게시 기간 안에서만 뜰 수 있어요 (게시 끝나는 날보다 늦음)');
+      } else { delete d.popupStart; delete d.popupEnd; }
     },
     afterCreate(d, u) {
       if (noticeStarted(d)) noticeAlert(d, u);
@@ -5523,7 +5575,7 @@ export function demoSeed() {
   notice(A, { title: '📢 곡선중 교무포털 체험판에 오신 것을 환영합니다', important: true, pinned: true, dept: '미래정보부', startDate: '', endDate: '',
     body: '이 화면은 **체험판**입니다. 학생·교직원 이름과 전화번호는 모두 지어낸 예시예요.\n\n- 왼쪽 메뉴를 눌러 자유롭게 둘러보세요\n- 글쓰기·예약·설문·서명도 직접 해 볼 수 있어요\n- 입력한 내용은 ==이 브라우저에만== 저장되고, 화면 위 [처음 상태로] 버튼으로 지울 수 있어요\n\n!!실제 학교 자료는 하나도 들어 있지 않습니다!!' }, 1);
   const tu = byName('송채원') || A;
-  notice(tu, { title: `${d(2).slice(5).replace('-', '/')} 교직원 회의 안내 — 3층 시청각실`, important: true, pinned: false, dept: '교무기획부', startDate: T0, endDate: d(2),
+  notice(tu, { title: `${d(2).slice(5).replace('-', '/')} 교직원 회의 안내 — 3층 시청각실`, important: true, pinned: false, dept: '교무기획부', startDate: T0, endDate: d(2), popup: true, popupStart: T0, popupEnd: d(2),
     body: `## 교직원 회의\n\n- 일시: **${d(2)} 15:40**\n- 장소: 3층 시청각실\n- 안건: 2학기 1차 지필평가 일정, 학교 축제 준비\n\n!!모든 선생님 참석 부탁드립니다!!` }, 3);
   notice(H, { title: '2학기 1차 지필평가 출제 원안 제출 안내', important: true, pinned: false, dept: '연구평가부', startDate: T0, endDate: d(10),
     body: `출제 원안은 ==${d(7)}(금)까지== 연구평가부로 제출해 주세요.\n\n| 과목 | 제출처 | 비고 |\n|---|---|---|\n| 국어·영어 | 연구평가부 | 듣기평가 포함 |\n| 수학·과학 | 연구평가부 | 서술형 채점기준표 첨부 |\n\n++보안 유의: 출제 원안은 USB에 담지 마세요++` }, 20);
@@ -5863,6 +5915,8 @@ async function boot() {
     refreshBadges();
     window.addEventListener('hashchange', route);
     route();
+    // 📣 중요 공지 팝업 (화면이 뜬 뒤 잠깐 있다가)
+    setTimeout(() => import('https://gk.demo/js/popup.js').then(m => m.showNoticePopups()).catch(() => { /* 팝업 실패는 무시 */ }), 700);
   } catch (e) {
     if (e.status === 401) renderLogin(); else if (e.status === 428) renderMustChange(); else render($('#app'), html`<div class="boot">서버에 연결할 수 없습니다: ${e.message}</div>`);
   }
@@ -6356,7 +6410,7 @@ export function boardPage({ colName, base, title, desc, icon, cats, catLabel = '
         .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.createdAt - a.createdAt);
       render($('#list'), list.length ? html`<div class="table-wrap"><table class="t"><thead><tr><th style="width:110px">${catLabel}</th><th>제목</th><th style="width:110px">작성자</th><th style="width:${isNotice ? 150 : 110}px">${isNotice ? '게시 기간' : '작성'}</th><th style="width:80px">${isNotice ? '읽음' : '댓글'}</th></tr></thead><tbody>
         ${list.map(n => html`<tr class="click ${n.pinned ? 'notice-pin' : ''} ${isNotice && n.important ? 'notice-imp' : ''}" data-open="${n.id}">
-          <td>${n.pinned ? html`<span class="badge red">📌 고정</span>` : n.important ? html`<span class="badge amber">중요</span>` : html`<span class="badge">${n.cat || n.dept || '-'}</span>`}</td>
+          <td>${isNotice && n.popup && n.popupStart <= ymd() && ymd() <= n.popupEnd ? html`<span class="badge pop-badge" title="${n.popupEnd}까지 팝업으로 뜨는 공지">📣 팝업</span> ` : ''}${n.pinned ? html`<span class="badge red">📌 고정</span>` : n.important ? html`<span class="badge amber">중요</span>` : html`<span class="badge">${n.cat || n.dept || '-'}</span>`}</td>
           <td><span style="${isNotice && !n.readBy?.[state.me.id] ? 'font-weight:700' : ''}">${n.title}</span> ${n.attachments?.length ? '📎' : ''} ${Date.now() - n.createdAt < 86400000 * 2 ? html`<span class="badge blue">N</span>` : ''}</td>
           <td>${n.ownerName}</td><td class="small ${isNotice ? '' : 'faint'}">${isNotice ? (p => html`<span class="np-chip ${p.cls}">${p.short}</span>`)(periodInfo(n)) : ago(n.createdAt)}</td>
           <td class="small">${isNotice ? `${Object.keys(n.readBy || {}).length}명` : n.commentCount || ''}</td></tr>`)}</tbody></table></div>` : emptyState('📭', isNotice && viewMode === 'live' ? '지금 게시 중인 공지가 없습니다' : '글이 없습니다'));
@@ -6441,7 +6495,12 @@ export function editPost(n, { colName, cats, isNotice, base, onDone }) {
       ${isNotice ? html`<div class="f full np-period"><span>📅 게시 기간 <em class="small faint">— 끝나는 날이 지나면 목록·대시보드에서 자동으로 사라져요</em></span>
         <div class="np-row"><input type="date" name="startDate" value="${n.startDate || ymd()}"><b>~</b><input type="date" name="endDate" value="${n.id ? n.endDate || '' : ymd(addDays(new Date(), 6))}">
           <div class="np-quick">${[['오늘만', 0], ['3일', 2], ['1주일', 6], ['2주일', 13], ['한 달', 29], ['계속 게시', -1]].map(([l, d]) => html`<button type="button" class="btn sm" data-days="${d}">${l}</button>`)}</div></div>
-        <div class="np-sum" id="npSum"></div></div>` : ''}
+        <div class="np-sum" id="npSum"></div></div>
+      <div class="f full np-popup ${n.popup ? 'on' : ''}" id="npPopup">
+        <label class="check pop-check"><input type="checkbox" name="popup" ${n.popup ? raw('checked') : ''}> 📣 <b>팝업으로 띄우기</b> <em class="small faint">— 정말 중요한 공지만! 정한 기간 동안 접속하는 모든 선생님 화면에 팝업으로 떠요</em></label>
+        <div class="np-row pop-row"><input type="date" name="popupStart" value="${n.popupStart || n.startDate || ymd()}"><b>~</b><input type="date" name="popupEnd" value="${n.popupEnd || ymd(addDays(new Date(), 2))}">
+          <div class="np-quick">${[['오늘만', 0], ['3일', 2], ['1주일', 6]].map(([l, d]) => html`<button type="button" class="btn sm" data-pdays="${d}">${l}</button>`)}</div></div>
+        <div class="np-sum" id="popSum"></div></div>` : ''}
       <label class="f full">제목<input name="title" value="${n.title || ''}" required placeholder="한눈에 알 수 있게 짧게 (예: 10/15(수) 교직원 회의 — 3층 시청각실)"></label>
       <div class="f full"><span>내용</span>
         <div class="ed-bar"><span class="small faint">글자를 고른 뒤 누르세요 →</span><button type="button" class="btn sm" data-wrap="**"><b>굵게</b></button><button type="button" class="btn sm ed-red" data-wrap="!!">빨간 강조</button><button type="button" class="btn sm ed-mark" data-wrap="==">형광펜</button><button type="button" class="btn sm ed-big" data-wrap="++">큰 글씨</button><button type="button" class="btn sm" data-line="- ">• 목록</button><button type="button" class="btn sm" data-line="1. ">1. 번호</button></div>
@@ -6482,6 +6541,20 @@ export function editPost(n, { colName, cats, isNotice, base, onDone }) {
     sd.addEventListener('change', sum); ed.addEventListener('change', sum);
     on(m.el, 'click', '[data-days]', (e, b) => { const d = Number(b.dataset.days); ed.value = d < 0 ? '' : ymd(addDays(parseYmd(sd.value || ymd()), d)); sum(); });
     sum();
+    // 📣 팝업 기간 (게시 기간 안에서만)
+    const pc = $('[name=popup]', m.el), ps = $('[name=popupStart]', m.el), pe = $('[name=popupEnd]', m.el), box_ = $('#npPopup', m.el);
+    const psum = () => {
+      box_.classList.toggle('on', pc.checked);
+      $$('[data-pdays]', m.el).forEach(x => x.classList.toggle('primary', !!pe.value && daysBetween(ps.value || ymd(), pe.value) === Number(x.dataset.pdays)));
+      if (!pc.checked) return render($('#popSum', m.el), html``);
+      const bad = !ps.value || !pe.value ? '팝업 시작일과 끝나는 날을 정해 주세요' : pe.value < ps.value ? '끝나는 날이 시작일보다 빠릅니다'
+        : ed.value && pe.value > ed.value ? '팝업은 게시 기간 안에서만 뜰 수 있어요 (게시 끝나는 날보다 늦음)' : '';
+      render($('#popSum', m.el), bad ? html`<span style="color:var(--bad)">⚠ ${bad}</span>`
+        : html`📣 <b>${fmtDate(ps.value)} ~ ${fmtDate(pe.value)}</b> · ${daysBetween(ps.value, pe.value) + 1}일 동안 접속할 때마다 팝업 (「오늘 하루」「일주일」 보지 않기 가능)`);
+    };
+    [pc, ps, pe].forEach(x => x.addEventListener('change', psum)); ed.addEventListener('change', psum);
+    on(m.el, 'click', '[data-pdays]', (e, b) => { pe.value = ymd(addDays(parseYmd(ps.value || ymd()), Number(b.dataset.pdays))); psum(); });
+    psum();
   }
 }
 </script>
@@ -10974,6 +11047,91 @@ async function editStudent(id, after) {
   };
 }
 </script>
+<script type="text/gk-module" data-path="js/popup.js">// 📣 중요 공지 팝업: 공지에 「팝업으로 띄우기」를 체크하면 정한 기간 동안 접속할 때 뜬다.
+// 「오늘 하루 보지 않기」「일주일 보지 않기」는 계정에 기억(다른 PC·폰에서도 적용), 저장이 안 되면 이 브라우저에라도 기억
+import { state, api, put, html, render, md, ymd } from 'https://gk.demo/js/core.js';
+
+const DAY = ['일', '월', '화', '수', '목', '금', '토'];
+const md2 = s => { const d = new Date(s + 'T00:00:00'); return `${d.getMonth() + 1}/${d.getDate()}(${DAY[d.getDay()]})`; };
+const localKey = () => 'popSnooze:' + (state.me?.id || '');
+function snoozes() {
+  let local = {}; try { local = JSON.parse(localStorage.getItem(localKey()) || '{}'); } catch { /* 없음 */ }
+  return { ...local, ...(state.prefs?.popupSnooze || {}) };
+}
+function saveSnooze(ids, until) {
+  const now = Date.now(), all = Object.fromEntries(Object.entries(snoozes()).filter(([, t]) => t > now)); // 지난 기록은 정리
+  for (const id of ids) all[id] = until;
+  state.prefs = { ...(state.prefs || {}), popupSnooze: all };
+  try { localStorage.setItem(localKey(), JSON.stringify(all)); } catch { /* 무시 */ }
+  put('/api/me/prefs', { prefs: { popupSnooze: all } }).catch(() => { /* 게스트 등은 이 브라우저에만 */ });
+}
+
+export async function showNoticePopups() {
+  if (document.getElementById('npop') || !state.me) return;
+  let list = [];
+  try { list = (await api('/api/c/notices?view=live', { silent: true })).items || []; } catch { return; }
+  const today = ymd(), now = Date.now(), sz = snoozes();
+  list = list.filter(n => n.popup && n.popupStart <= today && today <= n.popupEnd && !(sz[n.id] > now))
+    .sort((a, b) => (b.important ? 1 : 0) - (a.important ? 1 : 0) || b.createdAt - a.createdAt);
+  if (!list.length) return;
+
+  let i = 0;
+  const box = document.createElement('div');
+  box.id = 'npop'; box.className = 'npop'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-labelledby', 'npopT');
+  document.body.append(box);
+  const prevFocus = document.activeElement;
+
+  const draw = dir => {
+    const n = list[i], left = n.popupEnd === today ? '오늘까지' : `${md2(n.popupEnd)}까지`;
+    render(box, html`<div class="npop-card ${n.important ? 'imp' : ''}">
+      <div class="npop-top">
+        <span class="npop-tag"><i>📣</i> 꼭 확인해 주세요</span>
+        ${list.length > 1 ? html`<span class="npop-count">${i + 1} / ${list.length}</span>` : ''}
+        <button type="button" class="npop-x" data-close aria-label="닫기">✕</button>
+      </div>
+      <div class="npop-main ${dir ? 'slide-' + dir : ''}">
+        <div class="npop-meta"><span class="npop-dept">${n.dept || '공지'}</span><span>${state.usersById?.[n.owner]?.name || n.ownerName || ''}</span><span class="npop-dot"></span><span>팝업 ${left}</span></div>
+        <h2 id="npopT">${n.title}</h2>
+        <div class="post-body npop-text">${n.body ? md(n.body) : ''}</div>
+        ${(n.attachments || []).length ? html`<div class="npop-att">📎 첨부 ${n.attachments.length}개 — [자세히 보기]에서 내려받을 수 있어요</div>` : ''}
+      </div>
+      ${list.length > 1 ? html`<div class="npop-dots">${list.map((_, k) => html`<button type="button" class="${k === i ? 'on' : ''}" data-go="${k}" aria-label="${k + 1}번째 공지"></button>`)}</div>` : ''}
+      <div class="npop-foot">
+        <div class="npop-snz"><button type="button" data-snz="1">오늘 하루 보지 않기</button><span>·</span><button type="button" data-snz="7">일주일 보지 않기</button></div>
+        <div class="npop-act"><button type="button" class="btn" data-more>자세히 보기</button><button type="button" class="btn primary" data-ok>${i < list.length - 1 ? '다음 공지 ›' : '확인'}</button></div>
+      </div></div>`);
+    box.querySelector('[data-ok]')?.focus({ preventScroll: true });
+  };
+  const close = () => {
+    box.classList.add('out');
+    document.removeEventListener('keydown', onKey);
+    setTimeout(() => { box.remove(); try { prevFocus?.focus?.(); } catch { /* 무시 */ } }, 220);
+  };
+  const go = k => { if (k < 0 || k >= list.length || k === i) return; const dir = k > i ? 'next' : 'prev'; i = k; draw(dir); };
+  const onKey = e => {
+    if (e.key === 'Escape') close();
+    else if (e.key === 'ArrowRight') go(i + 1);
+    else if (e.key === 'ArrowLeft') go(i - 1);
+  };
+  document.addEventListener('keydown', onKey);
+  box.addEventListener('click', e => {
+    const t = e.target.closest('button, [data-more]');
+    if (e.target === box) return close();                       // 바깥 누르면 닫기
+    if (!t) return;
+    if (t.matches('[data-close]')) close();
+    else if (t.matches('[data-ok]')) { if (i < list.length - 1) go(i + 1); else close(); }
+    else if (t.matches('[data-go]')) go(Number(t.dataset.go));
+    else if (t.matches('[data-more]')) { location.hash = `#/notices/${list[i].id}`; close(); }
+    else if (t.matches('[data-snz]')) {
+      const days = Number(t.dataset.snz), end = new Date();
+      if (days === 1) end.setHours(23, 59, 59, 999); else end.setTime(end.getTime() + days * 86400000);
+      saveSnooze(list.map(n => n.id), end.getTime());
+      close();
+    }
+  });
+  draw();
+}
+</script>
 <script type="text/gk-module" data-path="js/students.js">// 학생 데이터 공용 함수
 import { col, html, raw, formModal, ok } from 'https://gk.demo/js/core.js';
 
@@ -11317,7 +11475,7 @@ export async function openWhiteboard({ url = null, mime = '', name = '빈 칠판
 <script>
 // 체험판 모듈 주소표(import map) — 각 코드 조각을 브라우저 안 파일(blob)로 연결
 (() => {
-  globalThis.__gkDemoVersion = "202611050252";
+  globalThis.__gkDemoVersion = "202611100011";
   globalThis.__gkWasm = () => { const s = atob(document.getElementById('gk-wasm').textContent.trim()); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; };
   const V = "https://gk.demo/", map = {};
   const blob = t => URL.createObjectURL(new Blob([t], { type: 'text/javascript' }));
